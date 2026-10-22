@@ -66,6 +66,7 @@ export interface Configuration {
   geometry: Partial<Record<ComponentId, Vec3>>;
   orientations?: Partial<Record<ComponentId, Vec3>>;
   seed: number;
+  inputRoute?: ComponentId[];
   routes?: Record<BeamId, ComponentId[]>;
 }
 export interface Complex {

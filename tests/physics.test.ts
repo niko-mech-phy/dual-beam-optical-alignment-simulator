@@ -34,7 +34,13 @@ import {
   counterAngle,
   matrixRank,
 } from "../src/physics";
-import type { Vec3, ComponentId, Adjustment } from "../src/physics";
+import defaultSetup from "../public/default-setup.json";
+import type {
+  Vec3,
+  ComponentId,
+  Adjustment,
+  Configuration,
+} from "../src/physics";
 const nearVector = (actual: Vec3, expected: Vec3, tolerance = 1e-9) =>
   expect(norm(sub(actual, expected))).toBeLessThan(tolerance);
 describe("coordinate frames and geometric laws", () => {
@@ -421,5 +427,19 @@ describe("per-beam transverse frames", () => {
         );
       }
     expect(sim.beams.A.segments.some((s) => s.toId === "hwp")).toBe(true);
+  });
+});
+
+describe("published reference layout", () => {
+  it("traces both counter-propagating beams through the requested folded bench", () => {
+    const sim = simulate(
+      defaultSetup.configuration as unknown as Configuration,
+    );
+    expect(sim.beams.A.blocked).toBe(false);
+    expect(sim.beams.B.blocked).toBe(false);
+    expect(sim.separation).toBeLessThan(0.001);
+    expect(sim.angleMrad).toBeLessThan(0.1);
+    expect(sim.beams.A.segments.some((s) => s.toId === "iris1")).toBe(true);
+    expect(sim.beams.B.segments.some((s) => s.toId === "a1")).toBe(true);
   });
 });

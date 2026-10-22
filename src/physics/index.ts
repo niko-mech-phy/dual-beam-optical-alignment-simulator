@@ -19,6 +19,7 @@ import {
   sub,
   scale,
   dot,
+  cross,
   norm,
   normalize,
   reflect,
@@ -406,14 +407,19 @@ export function cubePass(
   size: number,
   index: number,
   reflected: boolean,
+  baseCoating: Vec3 = normalize([-1, 0, 1]),
 ) {
-  const nominal = normalize([-1, 0, 1]);
+  const nominal = normalize(baseCoating),
+    verticalSeed: Vec3 =
+      Math.abs(dot(nominal, [0, 1, 0])) > 0.98 ? [0, 0, 1] : [0, 1, 0],
+    vertical = normalize(
+      sub(verticalSeed, scale(nominal, dot(verticalSeed, nominal))),
+    ),
+    diagonal = normalize(cross(vertical, nominal)),
+    axisX = normalize(sub(diagonal, nominal)),
+    axisZ = normalize(add(diagonal, nominal));
   const axes = (
-    [
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ] as Vec3[]
+    [axisX, vertical, axisZ] as Vec3[]
   ).map((v) => mountRotate(v, nominal, pitch, yaw, roll));
   const coating = mountRotate(nominal, nominal, pitch, yaw, roll);
   let entryAxis = axes[0];
@@ -490,6 +496,7 @@ function passPBS(
     config.settings.pbsSize,
     config.settings.pbsIndex,
     beam === "A",
+    component.normal,
   );
   if (!pass) {
     ray.blocked = true;
@@ -591,9 +598,21 @@ function traceBeam(
     warnings: [],
     blocked: false,
   };
-  const hwp = get("hwp");
-  if (hit(ray, hwp.position, hwp.normal, hwp.id, beam))
-    clip(ray, hwp, settings);
+  const inputRoute = config.inputRoute || ["hwp"];
+  for (const id of inputRoute) {
+    if (ray.blocked) break;
+    const c = get(id);
+    if (!c || !["mirror", "iris", "hwp"].includes(c.kind)) {
+      ray.warnings.push(
+        `Unsupported input element ${id}; use mirrors, irises, or the half-wave plate.`,
+      );
+      ray.blocked = true;
+      break;
+    }
+    if (!hit(ray, c.position, c.normal, id, beam)) break;
+    clip(ray, c, settings);
+    if (c.kind === "mirror") ray.d = reflect(ray.d, c.normal);
+  }
   if (!ray.blocked) passPBS(ray, get("pbs"), config, beam, 1);
   const route = config.routes?.[beam] || DEFAULT_ROUTES[beam];
   let trapSegment: Segment | undefined;

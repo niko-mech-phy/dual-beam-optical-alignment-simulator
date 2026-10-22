@@ -2018,6 +2018,9 @@ function TopologyModal({
     A: (config.routes?.A || DEFAULT_ROUTES.A).join(", "),
     B: (config.routes?.B || DEFAULT_ROUTES.B).join(", "),
   });
+  const [inputRoute, setInputRoute] = useState(
+    (config.inputRoute || ["hwp"]).join(", "),
+  );
   const [error, setError] = useState("");
   const c = COMPONENTS.find((c) => c.id === id)!;
   const position = config.geometry[id] || c.position;
@@ -2054,14 +2057,19 @@ function TopologyModal({
           </button>
         </div>
         <p className="modal-intro">
-          The attachment contained no reference images. This editable folded
-          loop is the initial topology assumption. Both beams pass through the
-          opposite lens and return to the same PBS.
+          The editable input chain feeds one PBS. The two beams then travel in
+          opposite directions through the folded loop and recombine at that
+          same cube.
         </p>
         <div className="topology-source">
           <Zap size={16} />
           Laser <ArrowRight size={14} />
-          Half-wave plate <ArrowRight size={14} />
+          {(config.inputRoute || ["hwp"]).map((x) => (
+            <span key={x}>
+              {COMPONENTS.find((c) => c.id === x)?.short || x}{" "}
+              <ArrowRight size={14} />
+            </span>
+          ))}
           <b>Single PBS</b>
         </div>
         {(["A", "B"] as const).map((b) => (
@@ -2089,8 +2097,9 @@ function TopologyModal({
             <b>Polarization-preserving recombination</b>
             <p>
               A is reflected at both coating encounters. B is transmitted at
-              both. Both exit the common −X port. The input laser enters +Z; no
-              second PBS or hidden polarization swap is introduced.
+              both. The editable input chain and loop geometry determine the
+              physical ports; no second PBS or hidden polarization swap is
+              introduced.
             </p>
           </div>
         </div>
@@ -2199,10 +2208,19 @@ function TopologyModal({
         <details className="route-edit">
           <summary>Edit component traversal</summary>
           <p>
-            Each comma-separated route lies between the first and second
-            encounter with the PBS. Invalid paths or incompatible coarse
-            orientations may miss surfaces.
+            The input route runs from the laser to the first PBS encounter.
+            Beam routes lie between the first and second PBS encounters.
+            Invalid paths or incompatible coarse orientations may miss
+            surfaces.
           </p>
+          <label>
+            Input
+            <input
+              disabled={locked}
+              value={inputRoute}
+              onChange={(e) => setInputRoute(e.target.value)}
+            />
+          </label>
           {(["A", "B"] as const).map((b) => (
             <label key={b}>
               Beam {b}
@@ -2219,11 +2237,24 @@ function TopologyModal({
             className="button"
             disabled={locked}
             onClick={() => {
+              const nextInput = inputRoute
+                .split(",")
+                .map((x) => x.trim())
+                .filter(Boolean);
               const next = {
                 A: routes.A.split(",").map((x) => x.trim()),
                 B: routes.B.split(",").map((x) => x.trim()),
               };
               if (
+                nextInput.length < 1 ||
+                nextInput.length > 20 ||
+                nextInput.some(
+                  (x) =>
+                    !COMPONENTS.some((c) => c.id === x) ||
+                    !["mirror", "iris", "hwp"].includes(
+                      COMPONENTS.find((c) => c.id === x)!.kind,
+                    ),
+                ) ||
                 Object.values(next).some(
                   (r) =>
                     r.length < 2 ||
@@ -2238,13 +2269,14 @@ function TopologyModal({
                 )
               ) {
                 setError(
-                  "Use 2–20 valid loop component IDs; PBS is added automatically.",
+                  "Use valid input and loop component IDs; the PBS is added automatically.",
                 );
                 return;
               }
               setError("");
               setConfig((c) => ({
                 ...c,
+                inputRoute: nextInput as ComponentId[],
                 routes: next as Record<BeamId, ComponentId[]>,
               }));
             }}
@@ -2340,6 +2372,14 @@ function validateConfig(raw: unknown): Configuration | null {
         route.some((id) => !base.adjustments[id as ComponentId])
       )
         return null;
+  if (
+    r.inputRoute &&
+    (!Array.isArray(r.inputRoute) ||
+      r.inputRoute.length < 1 ||
+      r.inputRoute.length > 20 ||
+      r.inputRoute.some((id) => !base.adjustments[id as ComponentId]))
+  )
+    return null;
   return r;
 }
 export default App;
