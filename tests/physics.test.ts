@@ -38,6 +38,16 @@ import type { Vec3, ComponentId, Adjustment } from "../src/physics";
 const nearVector = (actual: Vec3, expected: Vec3, tolerance = 1e-9) =>
   expect(norm(sub(actual, expected))).toBeLessThan(tolerance);
 describe("coordinate frames and geometric laws", () => {
+  it("applies coarse component orientations independently of fine mount steps", () => {
+    const config = createConfiguration();
+    config.orientations = { a1: [0, 1, 0] };
+    const component = simulate(config).components.find(
+      (item) => item.id === "a1",
+    )!;
+    nearVector(component.normal, [0, 1, 0]);
+    expect(config.adjustments.a1.pitch).toBe(0);
+    expect(config.adjustments.a1.yaw).toBe(0);
+  });
   it("reflects a ray with the exact doubled mirror rotation", () => {
     const theta = 0.003,
       normal = rotate(normalize([-1, 0, 1]), [0, 1, 0], theta),
@@ -218,9 +228,9 @@ describe("finite single-PBS loop and power", () => {
         const pbs = b.segments.filter(
           (x) => x.fromId.startsWith("pbs:1:") || x.toId.startsWith("pbs:1:"),
         );
-        expect(
-          pbs.every((x) => Math.abs(x.power - pbs[0].power) < 1e-14),
-        ).toBe(true);
+        expect(pbs.every((x) => Math.abs(x.power - pbs[0].power) < 1e-14)).toBe(
+          true,
+        );
       }
       expect(s.beams.A.power + s.beams.B.power).toBeCloseTo(
         c.settings.power,

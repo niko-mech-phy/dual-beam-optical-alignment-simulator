@@ -1475,6 +1475,49 @@ small {
 .geometry-edit select {
   margin-top: 7px;
 }
+.orientation-edit {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid #2d414d;
+  border-radius: 8px;
+  background: #0c151e;
+}
+.orientation-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+}
+.orientation-heading b {
+  color: #c3d9de;
+  font-size: 11px;
+}
+.orientation-heading p {
+  color: #7f9aa8;
+  font-size: 9px;
+  margin-top: 5px;
+  max-width: 540px;
+}
+.orientation-values {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 13px;
+}
+.orientation-values label {
+  color: #8ba9b6;
+  font-size: 9px;
+}
+.orientation-values input {
+  width: 100%;
+  margin-top: 6px;
+}
+.coarse-rotation-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 12px;
+}
 .assumptions {
   border-top: 1px solid #30434f;
   margin-top: 22px;

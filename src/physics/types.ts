@@ -64,6 +64,7 @@ export interface Configuration {
   hidden: Record<ComponentId, Adjustment>;
   settings: Settings;
   geometry: Partial<Record<ComponentId, Vec3>>;
+  orientations?: Partial<Record<ComponentId, Vec3>>;
   seed: number;
   routes?: Record<BeamId, ComponentId[]>;
 }

@@ -14,6 +14,8 @@ The GitHub Pages workflow in `.github/workflows/deploy-pages.yml` builds and pub
 
 The hosted simulator needs no installation or local server. Mode C uses a browser-native analytical Gaussian wave model. The optional Python solver remains available for local FFT diffraction validation.
 
+To publish a redesigned bench as the site-wide default, arrange it in **Experiment → View & edit optical topology**, use **Advanced settings → Export JSON**, and replace `public/default-setup.json` with that exported file. Commit and push; every new visitor then loads that configuration. A null configuration keeps the built-in TypeScript layout.
+
 ## Local quick start
 
 The deliverable includes a production browser build in `dist/`. With Python 3.10+ installed, one command serves the application and the optional NumPy/SciPy API:
@@ -80,7 +82,7 @@ Switching to Experiment or Wave optics reveals model truth. The Reveal solution 
 - **Camera:** a point particle at the trap supplies the scattering signal. Camera position and pointing determine its perspective projection; zoom, exposure, roll, image offset and optional sensor noise affect display. With no particle, the vacuum remains dark. The fixed gain preserves signal loss on misalignment. This is an illustrative PSF camera, not a calibrated scattering or microscope model.
 - **Response matrix:** finite-difference effects of the selected adjustment on the next component, the focusing lens, the waist, direction and recombination. Pitch displays vertical response; yaw displays the other transverse response.
 - **Advanced settings:** wavelength, input radius, M², focal length, step scales, glass index, cube size, power and iris radius. These calibrations are locked during an unrevealed Real Lab challenge.
-- **Topology editor:** edit world component positions and component traversal independently for both arms. Mirror mount normals remain tied to the nominal prescription; changing topology does not magically realign mirrors. Physically invalid routes are diagnosed.
+- **Topology editor:** edit world component positions, exact surface/optical-axis normals, coarse ±90° rotations about world X/Y/Z, and component traversal independently for both arms. Coarse installation orientation is stored separately from fine pitch/yaw mount steps. Physically invalid routes are diagnosed.
 - **Onboarding:** the help button opens a four-step walkthrough.
 
 ## One PBS: the actual path assumption

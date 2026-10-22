@@ -223,6 +223,7 @@ export function createConfiguration(): Configuration {
     >,
     settings: { ...DEFAULT_SETTINGS },
     geometry: {},
+    orientations: {},
     seed: 42,
   };
 }
@@ -261,9 +262,10 @@ function actualComponents(config: Configuration): Component[] {
   return COMPONENTS.map((c) => {
     const a = total(config, c.id),
       base = config.geometry[c.id] || c.position,
+      baseNormal = normalize(config.orientations?.[c.id] || c.normal),
       axial =
         c.kind === "lens" || c.kind === "window"
-          ? c.normal
+          ? baseNormal
           : ([0, 0, 1] as Vec3);
     const local = frame(axial);
     const position = add(
@@ -283,8 +285,8 @@ function actualComponents(config: Configuration): Component[] {
       position,
       normal: normalize(
         mountRotate(
-          c.normal,
-          c.normal,
+          baseNormal,
+          baseNormal,
           a.pitch * rad,
           a.yaw * rad,
           a.roll * rad,
@@ -942,6 +944,7 @@ export function randomizeConfiguration(
       ...fresh,
       settings: { ...config.settings },
       geometry: { ...config.geometry },
+      orientations: { ...config.orientations },
       routes: config.routes,
       seed,
     };

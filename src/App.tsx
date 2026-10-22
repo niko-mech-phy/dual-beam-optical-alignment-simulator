@@ -59,6 +59,8 @@ import {
   suggestAdjustment,
   applyAdjustment,
   resetComponent,
+  normalize,
+  rotate,
 } from "./physics";
 import type {
   Adjustment,
@@ -372,6 +374,21 @@ function App() {
     const t = setTimeout(() => setNotice(""), 3800);
     return () => clearTimeout(t);
   }, [notice]);
+  useEffect(() => {
+    let active = true;
+    fetch(new URL("default-setup.json", document.baseURI), {
+      cache: "no-cache",
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((raw) => {
+        const loaded = validateConfig(raw?.configuration || raw);
+        if (active && loaded) setConfig(loaded);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
   useEffect(
     () => () => {
       stopAuto.current = true;
@@ -426,7 +443,7 @@ function App() {
       new Blob(
         [
           JSON.stringify(
-            { format: "dual-beam-lab", version: 1, configuration: config },
+            { format: "dual-beam-lab", version: 2, configuration: config },
             null,
             2,
           ),
@@ -2004,6 +2021,17 @@ function TopologyModal({
   const [error, setError] = useState("");
   const c = COMPONENTS.find((c) => c.id === id)!;
   const position = config.geometry[id] || c.position;
+  const orientation = config.orientations?.[id] || c.normal;
+  const setOrientation = (next: Vec3) => {
+    if (Math.hypot(...next) < 1e-8) return;
+    setConfig((old) => ({
+      ...old,
+      orientations: {
+        ...old.orientations,
+        [id]: normalize(next),
+      },
+    }));
+  };
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div
@@ -2102,12 +2130,78 @@ function TopologyModal({
             </label>
           ))}
         </div>
+        <div className="orientation-edit">
+          <div className="orientation-heading">
+            <div>
+              <b>Nominal orientation</b>
+              <p>
+                This is the coarse installation angle, separate from the fine
+                pitch/yaw mount controls. For mirrors it is the surface normal;
+                for lenses and windows it is the optical axis.
+              </p>
+            </div>
+            <button
+              className="button"
+              disabled={locked}
+              onClick={() => setOrientation(c.normal)}
+            >
+              Reset orientation
+            </button>
+          </div>
+          <div className="orientation-values">
+            {(["X", "Y", "Z"] as const).map((axis, i) => (
+              <label key={axis}>
+                Normal {axis}
+                <input
+                  disabled={locked}
+                  type="number"
+                  min="-1"
+                  max="1"
+                  step="0.01"
+                  value={Number(orientation[i].toFixed(6))}
+                  onChange={(e) => {
+                    const next = [...orientation] as Vec3;
+                    next[i] = clamp(+e.target.value, -1, 1);
+                    setOrientation(next);
+                  }}
+                />
+              </label>
+            ))}
+          </div>
+          <div className="coarse-rotation-buttons">
+            {([0, 1, 2] as const).flatMap((axis) =>
+              ([-1, 1] as const).map((direction) => {
+                const axisName = ["X", "Y", "Z"][axis];
+                const rotationAxis: Vec3 = [0, 0, 0];
+                rotationAxis[axis] = 1;
+                return (
+                  <button
+                    className="button"
+                    disabled={locked}
+                    key={`${axis}-${direction}`}
+                    onClick={() =>
+                      setOrientation(
+                        rotate(
+                          orientation,
+                          rotationAxis,
+                          direction * (Math.PI / 2),
+                        ),
+                      )
+                    }
+                  >
+                    Rotate {axisName} {direction > 0 ? "+90°" : "−90°"}
+                  </button>
+                );
+              }),
+            )}
+          </div>
+        </div>
         <details className="route-edit">
           <summary>Edit component traversal</summary>
           <p>
             Each comma-separated route lies between the first and second
-            encounter with the PBS. Mirror normals retain their nominal mounting
-            geometry. Invalid paths may miss surfaces.
+            encounter with the PBS. Invalid paths or incompatible coarse
+            orientations may miss surfaces.
           </p>
           {(["A", "B"] as const).map((b) => (
             <label key={b}>
@@ -2228,6 +2322,15 @@ function validateConfig(raw: unknown): Configuration | null {
       p.some((v) => !Number.isFinite(v) || Math.abs(v) > 10000)
     )
       return null;
+  if (r.orientations)
+    for (const normal of Object.values(r.orientations))
+      if (
+        !Array.isArray(normal) ||
+        normal.length !== 3 ||
+        normal.some((v) => !Number.isFinite(v) || Math.abs(v) > 1) ||
+        Math.hypot(...normal) < 1e-8
+      )
+        return null;
   if (r.routes)
     for (const route of Object.values(r.routes))
       if (
