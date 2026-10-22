@@ -269,6 +269,7 @@ function App() {
   const [preset, setPreset] = useState<"perspective" | "top" | "trap">(
     "perspective",
   );
+  const [cameraReset, setCameraReset] = useState(0);
   const [collapsed, setCollapsed] = useState(false);
   const [advanced, setAdvanced] = useState(false);
   const [idealLens, setIdealLens] = useState(false);
@@ -972,6 +973,7 @@ function App() {
                   showLabels={labels}
                   revealActual={truthVisible}
                   cameraPreset={preset}
+                  cameraReset={cameraReset}
                   particle={particle}
                   wavelengthNm={config.settings.wavelengthNm}
                   visibleBeams={sceneBeamChoice}
@@ -1038,6 +1040,14 @@ function App() {
                     </span>
                   </button>
                 ))}
+                <button
+                  title="Reset view to the selected main axes"
+                  aria-label="Reset camera view"
+                  onClick={() => setCameraReset((value) => value + 1)}
+                >
+                  <RefreshCw size={14} />
+                  <span>Reset</span>
+                </button>
               </div>
               <div className="scene-bottom">
                 <span>
@@ -2002,6 +2012,81 @@ function ResponseMatrix({
     </div>
   );
 }
+function OrientationIllustration({
+  normal,
+  label,
+}: {
+  normal: Vec3;
+  label: string;
+}) {
+  const project = ([x, y, z]: Vec3): [number, number] => [
+    100 + x * 62 - z * 34,
+    77 - y * 58 + z * 26,
+  ];
+  const end = project(normalize(normal));
+  return (
+    <div className="orientation-illustration">
+      <div className="orientation-preview-heading">
+        <span>LIVE ORIENTATION</span>
+        <b>{label}</b>
+      </div>
+      <svg viewBox="0 0 200 145" role="img" aria-label={`${label} orientation`}>
+        <defs>
+          <marker
+            id="orientation-arrow"
+            markerWidth="7"
+            markerHeight="7"
+            refX="6"
+            refY="3.5"
+            orient="auto"
+          >
+            <path d="M0,0 L7,3.5 L0,7 Z" fill="#69e0c2" />
+          </marker>
+        </defs>
+        {(
+          [
+            { name: "X", vector: [1, 0, 0] as Vec3, color: "#ff8a65" },
+            { name: "Y", vector: [0, 1, 0] as Vec3, color: "#79cf8c" },
+            { name: "Z", vector: [0, 0, 1] as Vec3, color: "#78aef5" },
+          ] as const
+        ).map((axis) => {
+          const p = project(axis.vector);
+          return (
+            <g key={axis.name}>
+              <line
+                x1="100"
+                y1="77"
+                x2={p[0]}
+                y2={p[1]}
+                stroke={axis.color}
+                strokeWidth="1.4"
+                opacity=".72"
+              />
+              <text x={p[0] + 4} y={p[1] + 3} fill={axis.color}>
+                +{axis.name}
+              </text>
+            </g>
+          );
+        })}
+        <circle cx="100" cy="77" r="4" fill="#d8e9ed" />
+        <line
+          x1="100"
+          y1="77"
+          x2={end[0]}
+          y2={end[1]}
+          stroke="#69e0c2"
+          strokeWidth="4"
+          markerEnd="url(#orientation-arrow)"
+        />
+        <circle cx={end[0]} cy={end[1]} r="7" fill="#69e0c229" />
+        <text x="10" y="132" className="orientation-vector-text">
+          n = [{normal.map((value) => value.toFixed(3)).join(", ")}]
+        </text>
+      </svg>
+    </div>
+  );
+}
+
 function TopologyModal({
   config,
   setConfig,
@@ -2058,8 +2143,8 @@ function TopologyModal({
         </div>
         <p className="modal-intro">
           The editable input chain feeds one PBS. The two beams then travel in
-          opposite directions through the folded loop and recombine at that
-          same cube.
+          opposite directions through the folded loop and recombine at that same
+          cube.
         </p>
         <div className="topology-source">
           <Zap size={16} />
@@ -2154,28 +2239,53 @@ function TopologyModal({
               disabled={locked}
               onClick={() => setOrientation(c.normal)}
             >
-              Reset orientation
+              Reset component default
             </button>
           </div>
-          <div className="orientation-values">
-            {(["X", "Y", "Z"] as const).map((axis, i) => (
-              <label key={axis}>
-                Normal {axis}
-                <input
-                  disabled={locked}
-                  type="number"
-                  min="-1"
-                  max="1"
-                  step="0.01"
-                  value={Number(orientation[i].toFixed(6))}
-                  onChange={(e) => {
-                    const next = [...orientation] as Vec3;
-                    next[i] = clamp(+e.target.value, -1, 1);
-                    setOrientation(next);
-                  }}
-                />
-              </label>
-            ))}
+          <div className="orientation-workspace">
+            <OrientationIllustration normal={orientation} label={c.short} />
+            <div className="orientation-controls">
+              <div className="orientation-values">
+                {(["X", "Y", "Z"] as const).map((axis, i) => (
+                  <label key={axis}>
+                    Normal {axis}
+                    <input
+                      disabled={locked}
+                      type="number"
+                      min="-1"
+                      max="1"
+                      step="0.01"
+                      value={Number(orientation[i].toFixed(6))}
+                      onChange={(e) => {
+                        const next = [...orientation] as Vec3;
+                        next[i] = clamp(+e.target.value, -1, 1);
+                        setOrientation(next);
+                      }}
+                    />
+                  </label>
+                ))}
+              </div>
+              <span className="axis-control-label">ALIGN TO MAIN AXIS</span>
+              <div className="axis-alignment-buttons">
+                {(["X", "Y", "Z"] as const).flatMap((axis, index) =>
+                  ([-1, 1] as const).map((direction) => {
+                    const vector: Vec3 = [0, 0, 0];
+                    vector[index] = direction;
+                    return (
+                      <button
+                        className="button"
+                        disabled={locked}
+                        key={`${axis}-${direction}`}
+                        onClick={() => setOrientation(vector)}
+                      >
+                        {direction > 0 ? "+" : "−"}
+                        {axis}
+                      </button>
+                    );
+                  }),
+                )}
+              </div>
+            </div>
           </div>
           <div className="coarse-rotation-buttons">
             {([0, 1, 2] as const).flatMap((axis) =>
@@ -2208,10 +2318,9 @@ function TopologyModal({
         <details className="route-edit">
           <summary>Edit component traversal</summary>
           <p>
-            The input route runs from the laser to the first PBS encounter.
-            Beam routes lie between the first and second PBS encounters.
-            Invalid paths or incompatible coarse orientations may miss
-            surfaces.
+            The input route runs from the laser to the first PBS encounter. Beam
+            routes lie between the first and second PBS encounters. Invalid
+            paths or incompatible coarse orientations may miss surfaces.
           </p>
           <label>
             Input

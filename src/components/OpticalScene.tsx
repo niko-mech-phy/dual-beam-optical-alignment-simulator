@@ -19,6 +19,7 @@ interface OpticalSceneProps {
   showLabels: boolean;
   revealActual: boolean;
   cameraPreset: "perspective" | "top" | "trap";
+  cameraReset?: number;
   particle: boolean;
   wavelengthNm?: number;
   visibleBeams?: "A" | "B" | "both";
@@ -859,7 +860,13 @@ function Waist({
     </group>
   );
 }
-function CameraRig({ preset }: { preset: OpticalSceneProps["cameraPreset"] }) {
+function CameraRig({
+  preset,
+  reset,
+}: {
+  preset: OpticalSceneProps["cameraPreset"];
+  reset?: number;
+}) {
   const { camera, invalidate } = useThree();
   const controls = useRef<React.ComponentRef<typeof OrbitControls>>(null);
   useEffect(() => {
@@ -874,12 +881,13 @@ function CameraRig({ preset }: { preset: OpticalSceneProps["cameraPreset"] }) {
           ? new THREE.Vector3(74, 50, 87)
           : new THREE.Vector3(530, 460, 560);
     camera.position.copy(position);
-    camera.up.set(0, 1, 0);
+    if (preset === "top") camera.up.set(0, 0, -1);
+    else camera.up.set(0, 1, 0);
     camera.lookAt(target);
     controls.current?.target.copy(target);
     controls.current?.update();
     invalidate();
-  }, [preset, camera, invalidate]);
+  }, [preset, reset, camera, invalidate]);
   return (
     <OrbitControls
       ref={controls}
@@ -993,7 +1001,7 @@ function World(props: OpticalSceneProps) {
               )}
             </group>
           ))}
-      <CameraRig preset={cameraPreset} />
+      <CameraRig preset={cameraPreset} reset={props.cameraReset} />
     </>
   );
 }
