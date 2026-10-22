@@ -1,14 +1,22 @@
 # Optical Bench — Dual-Beam Alignment Lab
 
-A local, interactive optical alignment simulator built with React, TypeScript, Three.js / React Three Fiber, and a Python NumPy/SciPy diffraction engine.
+A browser-based interactive optical alignment simulator built with React, TypeScript, Three.js / React Three Fiber, plus an optional Python NumPy/SciPy diffraction engine for local validation.
 
-**Start by moving a mirror's pitch or yaw.** The chief rays, Gaussian envelopes, focal measurements and recombined output update in the browser. No server request is made for ordinary adjustments.
+**Start by moving a mirror's pitch or yaw.** The chief rays, Gaussian envelopes, focal measurements, recombined output and hosted wave maps are calculated in the browser.
 
 The supplied attachment contained the written brief but no schematic or mechanical reference images. The default setup is therefore an explicit, editable folded-loop assumption, not a reconstruction of unavailable CAD.
 
-## Quick start
+## Use online
 
-The deliverable includes a production browser build in `dist/`. With Python 3.10+ and NumPy/SciPy installed, one command starts the complete application:
+The GitHub Pages workflow in `.github/workflows/deploy-pages.yml` builds and publishes every push to `main`. After Pages is enabled with **GitHub Actions** as its source, the simulator is available at:
+
+**https://niko-mech-phy.github.io/dual-beam-optical-alignment-simulator/**
+
+The hosted simulator needs no installation or local server. Mode C uses a browser-native analytical Gaussian wave model. The optional Python solver remains available for local FFT diffraction validation.
+
+## Local quick start
+
+The deliverable includes a production browser build in `dist/`. With Python 3.10+ installed, one command serves the application and the optional NumPy/SciPy API:
 
 ```bash
 python3 python/server.py
@@ -36,7 +44,7 @@ npm ci
 npm run dev
 ```
 
-Open the URL printed by Vite (normally **http://127.0.0.1:5173/**). Run `python3 python/server.py` in a second terminal for Mode C. Vite proxies `/api` to loopback port 8765. The geometric/Gaussian app works without the Python service; the wave panel displays a clear startup error if that service is absent.
+Open the URL printed by Vite (normally **http://127.0.0.1:5173/**). The complete hosted interface works without Python. Run `python3 python/server.py` separately only when developing against the optional FFT API.
 
 ```bash
 npm run build       # TypeScript check and production build
@@ -45,7 +53,7 @@ python3 -m unittest discover -s python -v
 npm run format      # Format the source with Prettier
 ```
 
-A large Three.js bundle warning from Vite is informational. Production assets stay local. `WAVE_PORT` can change the Python server port; also update the Vite proxy when developing against a different port.
+A large Three.js bundle warning from Vite is informational. Production assets stay local. `WAVE_PORT` can change the optional Python server port; also update the Vite proxy when developing against a different port.
 
 ## A first alignment exercise
 
@@ -77,7 +85,7 @@ Switching to Experiment or Wave optics reveals model truth. The Reveal solution 
 
 ## One PBS: the actual path assumption
 
-World coordinates are in **millimeters**, with **Y vertical**, **X the trap axis** and **Z the other table coordinate**. Lens control “Z” is the lens's *local optical axis*, not necessarily world Z. A propagates toward −X through the trap; B propagates toward +X.
+World coordinates are in **millimeters**, with **Y vertical**, **X the trap axis** and **Z the other table coordinate**. Lens control “Z” is the lens's _local optical axis_, not necessarily world Z. A propagates toward −X through the trap; B propagates toward +X.
 
 The input travels +Z into one cube at `(0, 0, −180)`. A half-wave plate at `(0, 0, −250)` sets the input linear polarization. The lossless ideal PBS creates:
 
@@ -95,16 +103,16 @@ B, p: PBS transmission → B1 → B2 → LB → left window
 
 No second PBS and no hidden polarization-swapping wave plate are present. Polarization preservation sends both returning paths to the fourth port, rather than back toward the input laser.
 
-| Component | Nominal center, mm |
-|---|---|
-| A1 | `(240, 0, −180)` |
-| A2 | `(240, 0, 0)` |
-| B1 | `(0, 0, 180)` |
-| B2 | `(−240, 0, 0)` |
-| LA / LB | approximately `(+15.310, 0, 0)` / `(−15.310, 0, 0)` |
-| Windows | `(+5, 0, 0)` / `(−5, 0, 0)` |
-| Trap | `(0, 0, 0)` |
-| Output profiler | `(−100, 0, −180)` |
+| Component       | Nominal center, mm                                  |
+| --------------- | --------------------------------------------------- |
+| A1              | `(240, 0, −180)`                                    |
+| A2              | `(240, 0, 0)`                                       |
+| B1              | `(0, 0, 180)`                                       |
+| B2              | `(−240, 0, 0)`                                      |
+| LA / LB         | approximately `(+15.310, 0, 0)` / `(−15.310, 0, 0)` |
+| Windows         | `(+5, 0, 0)` / `(−5, 0, 0)`                         |
+| Trap            | `(0, 0, 0)`                                         |
+| Output profiler | `(−100, 0, −180)`                                   |
 
 The lens spacing compensates for a 1 mm, index-1.45 window in each focusing path and the small finite Gaussian input curvature. The routes and geometry are not constrained to this table.
 
@@ -141,14 +149,15 @@ src/physics/index.ts              Component graph, complete tracing, instruments
 src/components/OpticalScene.tsx   R3F scene, optomechanics, Gaussian envelopes
 src/components/Profiler.tsx       Gaussian profiler and illustrative scattering camera
 src/components/MeasuredDiagnostics.tsx  Instrument-derived angle and waist fits
-src/components/WavePanel.tsx      On-demand wave controls and result maps
+src/components/WavePanel.tsx      On-demand browser wave controls and result maps
+src/physics/browserWave.ts        Hosted analytical Gaussian wave calculation
 src/components/ErrorBoundary.tsx WebGL failure isolation and retry
 src/App.tsx                      Workspace, controls, training and topology editor
 python/wave_engine.py            NumPy/SciPy scalar diffraction
 python/server.py                 Loopback JSON API and built-app static server
 ```
 
-Nominal geometry, hidden mechanical errors and visible user adjustments are separate configuration layers. Ordinary edits only invoke synchronous browser calculations. Python runs on demand. Saved JSON is validated before use.
+Nominal geometry, hidden mechanical errors and visible user adjustments are separate configuration layers. The hosted application uses browser calculations throughout. Python is optional and runs on demand for local FFT studies. Saved JSON is validated before use.
 
 ## Verification
 
@@ -156,4 +165,4 @@ The automated suite covers mirror reflection and rotation order; 3D intersection
 
 Python tests cover analytic Gaussian propagation, scalar power conservation, forward/backward reciprocity, counterpropagating phase, aperture transmission, orthogonal intensity addition, evanescent suppression, phase screens, overlap, validation and safe static paths.
 
-The application was also exercised in a real browser: live mirror response, hidden-state mode, two-iris capture, finite-difference hints, visible automatic adjustment and an actual local wave calculation. Numerical unit tests establish specific model invariants; they do not validate a real lens prescription or guarantee convergence for every edited topology.
+The application was also exercised in a real browser: live mirror response, hidden-state mode, two-iris capture, finite-difference hints, visible automatic adjustment and a server-free hosted wave calculation. Numerical unit tests establish specific model invariants; they do not validate a real lens prescription or guarantee convergence for every edited topology.

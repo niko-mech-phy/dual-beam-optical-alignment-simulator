@@ -8,28 +8,12 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import type { Settings, Simulation } from "../physics/types";
+import {
+  calculateBrowserWave,
+  type BrowserWaveResult,
+} from "../physics/browserWave";
 
-interface WaveResult {
-  model: string;
-  grid_size: number;
-  axis_um: number[];
-  z_axis_um: number[];
-  xy: number[][];
-  xz: number[][];
-  far: number[][];
-  far_axis_direction_cosine: number[];
-  profiles: { x: number[]; y: number[] };
-  metrics: {
-    overlap: number;
-    independent_power_mw: number;
-    transmission: number;
-    spacing_um: number;
-    peak_mw_per_um2: number;
-    beams: { power_mw: number; centroid_um: number[]; radius_um: number[] }[];
-  };
-  cautions: string[];
-  notes: string[];
-}
+type WaveResult = BrowserWaveResult;
 
 const waveStyles = `
 .wave-panel {padding:22px; color:#dbe5e9; background:#101923; border:1px solid #253440; border-radius:14px; font-size:12px;}
@@ -197,8 +181,6 @@ export default function WavePanel({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [lastSignature, setLastSignature] = useState("");
-  const requestController = useRef<AbortController | null>(null);
-  useEffect(() => () => requestController.current?.abort(), []);
   const payload = useMemo(() => {
     const beams = Object.values(simulation.beams);
     const waist = Math.max(...beams.map((b) => b.waistRadius * 1000), 0.3);
@@ -256,41 +238,16 @@ export default function WavePanel({
   async function run() {
     setBusy(true);
     setError("");
-    requestController.current?.abort();
-    const controller = new AbortController();
-    requestController.current = controller;
-    const timeout = setTimeout(() => controller.abort(), 90000);
     try {
-      const response = await fetch("/api/wave", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: signature,
-        signal: controller.signal,
-      });
-      const text = await response.text();
-      let data: WaveResult & { error?: string };
-      try {
-        data = JSON.parse(text);
-      } catch {
-        throw new Error("The local wave engine is not responding.");
-      }
-      if (!response.ok)
-        throw new Error(data.error || "The local wave engine is unavailable.");
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 20));
+      const data = calculateBrowserWave(payload);
       setResult(data);
       setLastSignature(signature);
     } catch (err) {
-      if (!controller.signal.aborted)
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Could not connect to the local wave engine.",
-        );
-      else
-        setError(
-          "Calculation was interrupted or exceeded 90 seconds. Try a smaller grid.",
-        );
+      setError(
+        err instanceof Error ? err.message : "The browser calculation failed.",
+      );
     } finally {
-      clearTimeout(timeout);
       setBusy(false);
     }
   }
@@ -306,15 +263,14 @@ export default function WavePanel({
             Wave optics workbench
           </div>
           <p className="wave-subtitle">
-            Propagate both beams with a local NumPy/SciPy angular-spectrum
-            solver. These are scalar diffraction results from Gaussian
-            near-waist boundaries. Adjust the experiment, then calculate a new
-            snapshot.
+            Propagate both beams with a browser-native Gaussian wave model. The
+            focal plane, interference, aperture transmission and far field
+            update without a server or installation.
           </p>
         </div>
         <span className="wave-chip">
           <Activity size={11} />
-          MODE C · LOCAL PYTHON
+          MODE C · IN BROWSER
         </span>
       </div>
       <div className="wave-controls">
@@ -451,8 +407,7 @@ export default function WavePanel({
           <div>
             {error}
             <br />
-            Start the local backend from the project folder:{" "}
-            <code>python3 python/server.py</code>
+            Try a smaller grid or reload the page.
           </div>
         </div>
       )}
@@ -494,7 +449,7 @@ export default function WavePanel({
             </div>
             <div className="wave-metric">
               <strong>{result.grid_size}²</strong>
-              <span>FFT grid</span>
+              <span>Sample grid</span>
             </div>
           </div>
           <label
