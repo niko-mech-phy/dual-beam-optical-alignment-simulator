@@ -3,6 +3,7 @@ import {
   COMPONENTS,
   createConfiguration,
   simulate,
+  alignAtPlane,
   applyAdjustment,
   resetComponent,
   randomizeConfiguration,
@@ -431,15 +432,56 @@ describe("per-beam transverse frames", () => {
 });
 
 describe("published reference layout", () => {
-  it("traces both counter-propagating beams through the requested folded bench", () => {
+  it("traces both paths through the uploaded default geometry", () => {
     const sim = simulate(
       defaultSetup.configuration as unknown as Configuration,
     );
     expect(sim.beams.A.blocked).toBe(false);
     expect(sim.beams.B.blocked).toBe(false);
-    expect(sim.separation).toBeLessThan(0.001);
-    expect(sim.angleMrad).toBeLessThan(0.1);
+    expect(sim.components.find((c) => c.id === "laser")?.position).toEqual([
+      300, 0, -300,
+    ]);
     expect(sim.beams.A.segments.some((s) => s.toId === "iris1")).toBe(true);
     expect(sim.beams.B.segments.some((s) => s.toId === "a1")).toBe(true);
+  });
+});
+
+describe("imported bench layout", () => {
+  it("measures beams at the trap, input irises, and output with the Z axis layout", () => {
+    const sim = simulate(
+      defaultSetup.configuration as unknown as Configuration,
+    );
+    const planes = getPlanes(sim);
+    for (const id of ["trap", "iris1", "iris2", "output", "near", "far"]) {
+      const plane = planes.find((p) => p.id === id)!;
+      const m = measure(sim, plane);
+      expect(m.spots.A.valid, `${id} beam A`).toBe(true);
+      expect(m.spots.B.valid, `${id} beam B`).toBe(true);
+    }
+    for (const plane of planes) {
+      const measured = measure(sim, plane);
+      expect(measured.spots.A.valid, `${plane.id} beam A`).toBe(true);
+      expect(measured.spots.B.valid, `${plane.id} beam B`).toBe(true);
+    }
+    nearVector(planes.find((p) => p.id === "trap")!.normal, [0, 0, 1], 0.1);
+  });
+  it("improves overlap at a selected plane after steering errors", () => {
+    const config = structuredClone(defaultSetup.configuration) as Configuration;
+    config.adjustments.a2.yaw = 10;
+    config.adjustments.b1.yaw = -8;
+    const target = getPlanes(simulate(config)).find((p) => p.id === "trap")!;
+    const result = alignAtPlane(config, target);
+    expect(result.after).toBeLessThan(result.before);
+    expect(
+      measure(simulate(result.configuration), target).overlap,
+    ).toBeGreaterThan(measure(simulate(config), target).overlap);
+  });
+  it("does not sacrifice the supplied near-perfect trap overlap for angle", () => {
+    const config = structuredClone(defaultSetup.configuration) as Configuration;
+    const target = getPlanes(simulate(config)).find((p) => p.id === "trap")!;
+    const before = measure(simulate(config), target).overlap;
+    const result = alignAtPlane(config, target);
+    const after = measure(simulate(result.configuration), target).overlap;
+    expect(after).toBeGreaterThanOrEqual(before - 0.0001);
   });
 });

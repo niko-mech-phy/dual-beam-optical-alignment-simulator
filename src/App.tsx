@@ -46,7 +46,9 @@ import OpticalScene from "./components/OpticalScene";
 import ErrorBoundary from "./components/ErrorBoundary";
 import WavePanel from "./components/WavePanel";
 import MeasuredDiagnostics from "./components/MeasuredDiagnostics";
+import SchematicImporter from "./components/SchematicImporter";
 import { Profiler, ProfilePlot } from "./components/Profiler";
+import publishedSetup from "../public/default-setup.json";
 import type { BeamChoice } from "./components/Profiler";
 import {
   COMPONENTS,
@@ -54,11 +56,13 @@ import {
   createConfiguration,
   simulate,
   getPlanes,
+  makePlane,
   measure,
   randomizeConfiguration,
   suggestAdjustment,
   applyAdjustment,
   resetComponent,
+  alignAtPlane,
   normalize,
   rotate,
 } from "./physics";
@@ -76,7 +80,10 @@ import type {
 
 type Mode = "experiment" | "training" | "wave";
 type Scenario = "irises" | "coaxial" | "waists" | "crossing";
-const clamp = (v: number, lo = -5, hi = 5) => Math.max(lo, Math.min(hi, v));
+const bundledDefault =
+  validateConfig(publishedSetup.configuration) || createConfiguration();
+const clamp = (v: number, lo = -1000, hi = 1000) =>
+  Math.max(lo, Math.min(hi, v));
 const fmt = (v: number, dp = 2) => (Number.isFinite(v) ? v.toFixed(dp) : "—");
 const signed = (v: number, dp = 1) => `${v > 0 ? "+" : ""}${fmt(v, dp)}`;
 const unit = (mm: number) =>
@@ -164,47 +171,97 @@ function StepSlider({
   disabled?: boolean;
   unitText?: string;
 }) {
+  const [resolution, setResolution] = useState<"fine" | "coarse">("fine");
+  const [fineCenter, setFineCenter] = useState(value);
+  useEffect(() => {
+    if (value < fineCenter - 25 || value > fineCenter + 25)
+      setFineCenter(value);
+  }, [value, fineCenter]);
+  const min = resolution === "fine" ? Math.max(-1000, fineCenter - 25) : -1000;
+  const max = resolution === "fine" ? Math.min(1000, fineCenter + 25) : 1000;
+  const increment = resolution === "fine" ? 0.1 : 10;
+  const change = (next: number) => {
+    if (Number.isFinite(next)) onChange(clamp(Math.round(next * 100) / 100));
+  };
   return (
     <div className={`adjustment ${disabled ? "disabled" : ""}`}>
       <div className="adjustment-label">
         <span>{label}</span>
         <span className="step-value">
           {value > 0 ? "+" : ""}
-          {fmt(value, Number.isInteger(value) ? 0 : 1)}
-          <small>steps</small>
+          {fmt(value, Number.isInteger(value) ? 0 : 2)}
+          <small>
+            {["Pitch", "Yaw", "Roll"].includes(label)
+              ? " × mount step"
+              : " steps"}
+          </small>
         </span>
+      </div>
+      <div
+        className="resolution-switch"
+        role="group"
+        aria-label={`${label} resolution`}
+      >
+        <button
+          className={resolution === "fine" ? "active" : ""}
+          onClick={() => {
+            setFineCenter(value);
+            setResolution("fine");
+          }}
+        >
+          Fine · 0.1
+        </button>
+        <button
+          className={resolution === "coarse" ? "active" : ""}
+          onClick={() => setResolution("coarse")}
+        >
+          Coarse · 10
+        </button>
       </div>
       <div className="step-input">
         <button
           aria-label={`Decrease ${label}`}
-          disabled={disabled || value <= -5}
-          onClick={() => onChange(clamp(value - 1))}
+          disabled={disabled || value <= -1000}
+          onClick={() => change(value - increment)}
         >
           <Minus size={12} />
         </button>
         <input
           aria-label={label}
           type="range"
-          min="-5"
-          max="5"
-          step="1"
-          value={value}
+          min={min}
+          max={max}
+          step={resolution === "fine" ? 0.1 : 1}
+          value={clamp(value, min, max)}
           disabled={disabled}
-          onChange={(e) => onChange(+e.target.value)}
+          onChange={(e) => change(+e.target.value)}
         />
         <button
           aria-label={`Increase ${label}`}
-          disabled={disabled || value >= 5}
-          onClick={() => onChange(clamp(value + 1))}
+          disabled={disabled || value >= 1000}
+          onClick={() => change(value + increment)}
         >
           <Plus size={12} />
         </button>
       </div>
       <div className="step-ticks">
-        <span>−5</span>
-        <span>0</span>
-        <span>+5</span>
+        <span>{fmt(min, 0)}</span>
+        <span>{fmt((min + max) / 2, 0)}</span>
+        <span>{fmt(max, 0)}</span>
       </div>
+      <label className="direct-adjustment">
+        Exact value
+        <input
+          aria-label={`${label} exact value`}
+          type="number"
+          min="-1000"
+          max="1000"
+          step="0.01"
+          value={value}
+          disabled={disabled}
+          onChange={(e) => change(+e.target.value)}
+        />
+      </label>
       {unitText && <div className="control-note">{unitText}</div>}
     </div>
   );
@@ -256,7 +313,10 @@ function Metric({
 function App() {
   const [sceneBeamChoice, setSceneBeamChoice] = useState<BeamChoice>("both");
   const [config, setConfig] = useState<Configuration>(() =>
-    createConfiguration(),
+    structuredClone(bundledDefault),
+  );
+  const [defaultConfig, setDefaultConfig] = useState<Configuration>(() =>
+    structuredClone(bundledDefault),
   );
   const configRef = useRef(config);
   configRef.current = config;
@@ -288,6 +348,7 @@ function App() {
   const [scenario, setScenario] = useState<Scenario>("irises");
   const [revealed, setRevealed] = useState(false);
   const [planeId, setPlaneId] = useState("trap");
+  const [alignmentTarget, setAlignmentTarget] = useState("trap");
   const [customPlanes, setCustomPlanes] = useState<Plane[]>([]);
   const [newPlaneZ, setNewPlaneZ] = useState(1);
   const [choice, setChoice] = useState<BeamChoice>("both");
@@ -298,7 +359,7 @@ function App() {
   const [manualFov, setManualFov] = useState(0.1);
   const [exposure, setExposure] = useState(1);
   const [noise, setNoise] = useState(false);
-  const [particle, setParticle] = useState(false);
+  const [particle, setParticle] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [cameraAngle, setCameraAngle] = useState(0);
   const [cameraOffset, setCameraOffset] = useState(0);
@@ -312,12 +373,13 @@ function App() {
   const stopAuto = useRef(false);
   const [tour, setTour] = useState<number | null>(null);
   const [showTopology, setShowTopology] = useState(false);
+  const [showSchematic, setShowSchematic] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const canvasSection = useRef<HTMLDivElement>(null);
   const lab = mode === "training",
     truthVisible = !lab || revealed;
   const sim = useMemo(() => simulate(config), [config]);
-  const idealConfig = useMemo(() => createConfiguration(), []);
+  const idealConfig = defaultConfig;
   const guideSim = useMemo(
     () => simulate({ ...config, hidden: idealConfig.hidden }),
     [config, idealConfig],
@@ -339,6 +401,9 @@ function App() {
     planes.find((p) => p.id === planeId) ||
     planes.find((p) => p.id.includes("trap")) ||
     planes[0];
+  const alignmentPlanes = planes.filter(
+    (p) => !p.beam && p.id !== "iris1" && p.id !== "iris2",
+  );
   const measurement = useMemo(() => measure(sim, plane), [sim, plane]);
   const trapMeasurement = useMemo(
     () =>
@@ -347,6 +412,24 @@ function App() {
         getPlanes(guideSim).find((p) => p.id === "trap")!,
       ),
     [sim, guideSim],
+  );
+  const referenceTrap = useMemo(() => {
+    const baseline = simulate(defaultConfig);
+    return measure(
+      baseline,
+      getPlanes(baseline).find((p) => p.id === "trap")!,
+    );
+  }, [defaultConfig]);
+  const cameraSignal = Object.values(trapMeasurement.spots).reduce(
+    (sum, spot) =>
+      sum +
+      (spot.valid
+        ? Math.exp(
+            (-2 * (spot.x * spot.x + spot.y * spot.y)) /
+              Math.max(spot.radius * spot.radius, 1e-15),
+          )
+        : 0),
+    0,
   );
   const current =
     sim.components.find((c) => c.id === selected) || COMPONENTS[0];
@@ -383,7 +466,10 @@ function App() {
       .then((response) => (response.ok ? response.json() : null))
       .then((raw) => {
         const loaded = validateConfig(raw?.configuration || raw);
-        if (active && loaded) setConfig(loaded);
+        if (active && loaded) {
+          setDefaultConfig(loaded);
+          setConfig(loaded);
+        }
       })
       .catch(() => undefined);
     return () => {
@@ -406,18 +492,16 @@ function App() {
     setMode("experiment");
     stopAuto.current = true;
     setAutoRunning(false);
-    setConfig(createConfiguration());
+    setConfig(structuredClone(defaultConfig));
     setRevealed(false);
     setAdvice(null);
     setMeasuredIds([]);
-    setNotice("Ideal alignment restored");
+    setNotice("Published default setup restored");
   }
   function startScenario(s: Scenario = scenario) {
     stopAuto.current = true;
     setAutoRunning(false);
-    setConfig(
-      randomizeConfiguration(createConfiguration(), s, Date.now() % 1000000),
-    );
+    setConfig(randomizeConfiguration(defaultConfig, s, Date.now() % 1000000));
     setMode("training");
     setScenario(s);
     setRevealed(false);
@@ -603,6 +687,13 @@ function App() {
             <Save size={14} />
             Save setup
           </button>
+          <button
+            className="button subtle"
+            onClick={() => setShowSchematic(true)}
+          >
+            <Sparkles size={14} />
+            Image to setup
+          </button>
         </div>
       </header>
       <div className="workspace-bar">
@@ -744,7 +835,9 @@ function App() {
                     unitText={
                       axis === "z"
                         ? `1 step = ${config.settings.lensStepMm} mm along the lens axis`
-                        : undefined
+                        : ["pitch", "yaw", "roll"].includes(axis)
+                          ? `1 step = ${config.settings.mirrorStepMrad} mrad · current ${fmt(adjustment[axis] * config.settings.mirrorStepMrad, 3)} mrad`
+                          : undefined
                     }
                   />
                 ))}
@@ -1286,6 +1379,54 @@ function App() {
             </button>
           </div>
           <div className="measurement-body">
+            {!lab && (
+              <div className="auto-align-control">
+                <label htmlFor="alignment-target">AUTO ALIGN BEAMS AT</label>
+                <div>
+                  <select
+                    id="alignment-target"
+                    value={alignmentTarget}
+                    onChange={(e) => setAlignmentTarget(e.target.value)}
+                  >
+                    {alignmentPlanes.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="button primary"
+                    onClick={() => {
+                      const target = alignmentPlanes.find(
+                        (p) => p.id === alignmentTarget,
+                      );
+                      if (!target) return;
+                      const result = alignAtPlane(config, target);
+                      if (!Number.isFinite(result.before)) {
+                        setNotice(
+                          "Both beams must reach this plane before automatic alignment.",
+                        );
+                        return;
+                      }
+                      setConfig(result.configuration);
+                      setPlaneId(target.id);
+                      setInstrument("profiler");
+                      setNotice(
+                        result.after < result.before - 1e-8
+                          ? `Aligned the beams at ${target.name}`
+                          : "Already aligned here, or the available mounts cannot improve the overlap.",
+                      );
+                    }}
+                  >
+                    <Target size={13} /> Align
+                  </button>
+                </div>
+                <p>
+                  Moves the steering mirrors to improve spatial overlap at the
+                  chosen plane. Check another plane for angular mismatch.
+                </p>
+              </div>
+            )}
             <label className="field-label" htmlFor="observation">
               OBSERVATION PLANE
             </label>
@@ -1324,11 +1465,18 @@ function App() {
                 choice={choice}
                 fov={instrument === "camera" ? 0.1 : fov}
                 referenceRadius={
-                  (config.settings.m2 *
-                    config.settings.wavelengthNm *
-                    1e-6 *
-                    config.settings.focalLength) /
-                  (Math.PI * config.settings.beamRadius)
+                  instrument === "camera"
+                    ? Math.max(
+                        0.002,
+                        ...Object.values(referenceTrap.spots)
+                          .filter((spot) => spot.valid)
+                          .map((spot) => spot.radius),
+                      )
+                    : (config.settings.m2 *
+                        config.settings.wavelengthNm *
+                        1e-6 *
+                        config.settings.focalLength) /
+                      (Math.PI * config.settings.beamRadius)
                 }
                 referencePower={config.settings.power / 2}
                 cameraPosition={
@@ -1360,6 +1508,12 @@ function App() {
                   <Camera size={22} />
                   <span>Empty vacuum</span>
                   <small>Enable a test particle to see scattering.</small>
+                </div>
+              )}
+              {instrument === "camera" && particle && cameraSignal < 0.001 && (
+                <div className="camera-status">
+                  The test particle is at the trap, but the beams miss it. Try
+                  Auto align at Trap center.
                 </div>
               )}
             </div>
@@ -1540,15 +1694,16 @@ function App() {
               <button
                 className="button"
                 onClick={() => {
-                  const p: Plane = {
-                    id: `custom-${Date.now()}`,
-                    name: `Custom x = ${newPlaneZ} mm`,
-                    point: [newPlaneZ, 0, 0],
-                    normal: [1, 0, 0],
-                    u: [0, 0, 1],
-                    v: [0, 1, 0],
-                    segmentHint: "trap",
-                  };
+                  const axis = getPlanes(sim).find(
+                    (p) => p.id === "trap",
+                  )!.normal;
+                  const p: Plane = makePlane(
+                    `custom-${Date.now()}`,
+                    `Custom trap axis ${signed(newPlaneZ)} mm`,
+                    axis.map((v) => v * newPlaneZ) as Vec3,
+                    axis,
+                    "trap",
+                  );
                   setCustomPlanes((a) => [...a, p]);
                   setPlaneId(p.id);
                 }}
@@ -1805,6 +1960,20 @@ function App() {
           locked={lab && !revealed}
         />
       )}
+      {showSchematic && (
+        <SchematicImporter
+          base={config}
+          onApply={(next) => {
+            setConfig(next);
+            setMode("experiment");
+            setShowSchematic(false);
+            setNotice(
+              "Image layout applied. Review the beam paths and edit uncertain components.",
+            );
+          }}
+          onClose={() => setShowSchematic(false)}
+        />
+      )}
       {tour !== null && (
         <div className="modal-backdrop">
           <div className="modal tour-modal">
@@ -1919,11 +2088,11 @@ function ResponseMatrix({
         chosen,
         clamp(
           config.adjustments[selected][chosen] +
-            (config.adjustments[selected][chosen] >= 5 ? -1 : 1),
+            (config.adjustments[selected][chosen] >= 1000 ? -1 : 1),
         ),
       ),
     );
-    const sign = config.adjustments[selected][chosen] >= 5 ? -1 : 1;
+    const sign = config.adjustments[selected][chosen] >= 1000 ? -1 : 1;
     return (["A", "B"] as const).map((id) => {
       const a = simulation.beams[id],
         b = next.beams[id];
@@ -2283,6 +2452,36 @@ function TopologyModal({
                       </button>
                     );
                   }),
+                )}
+              </div>
+              <span className="axis-control-label">45° BETWEEN AXES</span>
+              <div className="diagonal-alignment-buttons">
+                {(
+                  [
+                    ["X", "Y", 0, 1],
+                    ["X", "Z", 0, 2],
+                    ["Y", "Z", 1, 2],
+                  ] as const
+                ).flatMap(([first, second, i, j]) =>
+                  ([-1, 1] as const).flatMap((firstSign) =>
+                    ([-1, 1] as const).map((secondSign) => {
+                      const vector: Vec3 = [0, 0, 0];
+                      vector[i] = firstSign / Math.SQRT2;
+                      vector[j] = secondSign / Math.SQRT2;
+                      return (
+                        <button
+                          className="button"
+                          disabled={locked}
+                          key={`${first}${firstSign}-${second}${secondSign}`}
+                          onClick={() => setOrientation(vector)}
+                        >
+                          {firstSign > 0 ? "+" : "−"}
+                          {first} {secondSign > 0 ? "+" : "−"}
+                          {second}
+                        </button>
+                      );
+                    }),
+                  ),
                 )}
               </div>
             </div>

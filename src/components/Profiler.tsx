@@ -104,16 +104,23 @@ export function Profiler({
         const grain = noise
           ? ((Math.sin(i * 23.7 + j * 73.1) * 43758.54) % 1) * 5
           : 0;
-        data.data[k] = Math.min(255, 5 + 250 * glowA + 65 * glowB + grain);
+        const background = Math.max(0, 1 - Math.min(1, glowA + glowB));
+        data.data[k] = Math.min(
+          255,
+          246 * background + 192 * glowA + 17 * glowB + grain,
+        );
         data.data[k + 1] = Math.min(
           255,
-          10 + 139 * glowA + 235 * glowB + grain,
+          250 * background + 70 * glowA + 139 * glowB + grain,
         );
-        data.data[k + 2] = Math.min(255, 17 + 88 * glowA + 207 * glowB + grain);
+        data.data[k + 2] = Math.min(
+          255,
+          252 * background + 55 * glowA + 119 * glowB + grain,
+        );
         data.data[k + 3] = 255;
       }
     ctx.putImageData(data, 0, 0);
-    ctx.strokeStyle = "#45607145";
+    ctx.strokeStyle = "#adc3ce88";
     ctx.lineWidth = 0.6;
     for (let t = 32; t < n; t += 32) {
       ctx.beginPath();
@@ -124,7 +131,7 @@ export function Profiler({
       ctx.stroke();
     }
     ctx.setLineDash([3, 4]);
-    ctx.strokeStyle = "#a0b5c34a";
+    ctx.strokeStyle = "#7695a477";
     ctx.beginPath();
     ctx.moveTo(n / 2, 0);
     ctx.lineTo(n / 2, n);
@@ -132,11 +139,22 @@ export function Profiler({
     ctx.lineTo(n, n / 2);
     ctx.stroke();
     ctx.setLineDash([]);
+    if (side && particle) {
+      const x = n * (imageU / span + 0.5),
+        y = n * (0.5 - imageV / span);
+      if (x >= 0 && x <= n && y >= 0 && y <= n) {
+        ctx.strokeStyle = "#637d8b";
+        ctx.lineWidth = 1.3;
+        ctx.beginPath();
+        ctx.arc(x, y, 7, 0, 2 * Math.PI);
+        ctx.stroke();
+      }
+    }
     if (!side)
       for (const s of spots) {
         const x = n * (s.x / span + 0.5),
           y = n * (0.5 - s.y / span);
-        ctx.strokeStyle = s.beam === "A" ? "#ffb294" : "#81f9da";
+        ctx.strokeStyle = s.beam === "A" ? "#b94b30" : "#087d68";
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(x - 5, y);

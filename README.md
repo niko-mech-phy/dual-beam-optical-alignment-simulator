@@ -4,7 +4,7 @@ A browser-based interactive optical alignment simulator built with React, TypeSc
 
 **Start by moving a mirror's pitch or yaw.** The chief rays, Gaussian envelopes, focal measurements, recombined output and hosted wave maps are calculated in the browser.
 
-The supplied attachment contained the written brief but no schematic or mechanical reference images. The default setup is therefore an explicit, editable folded-loop assumption, not a reconstruction of unavailable CAD.
+The published default bench is the editable setup supplied in `public/default-setup.json`. It is an illustrative optical model, not a reconstruction of CAD or a calibrated instrument.
 
 ## Use online
 
@@ -14,7 +14,9 @@ The GitHub Pages workflow in `.github/workflows/deploy-pages.yml` builds and pub
 
 The hosted simulator needs no installation or local server. Mode C uses a browser-native analytical Gaussian wave model. The optional Python solver remains available for local FFT diffraction validation.
 
-To publish a redesigned bench as the site-wide default, arrange it in **Experiment → View & edit optical topology**, use **Advanced settings → Export JSON**, and replace `public/default-setup.json` with that exported file. Commit and push; every new visitor then loads that configuration. A null configuration keeps the built-in TypeScript layout.
+To publish a redesigned bench as the site-wide default, arrange it in **Experiment → View & edit optical topology**, use **Advanced settings → Export JSON**, and replace `public/default-setup.json` with that exported file. Commit and push; every new visitor then loads that configuration.
+
+**Image to setup** accepts a schematic image and an OpenAI API key supplied by the visitor. The browser sends that image directly to the OpenAI Responses API, previews inferred component positions and routes, and applies them only when the visitor chooses **Apply**. The key is held in the open dialog only. This importer maps a drawing onto the simulator's existing 15 component types; review and correct uncertain geometry and orientations in the topology editor. API usage may incur charges on the visitor's OpenAI account.
 
 ## Local quick start
 
@@ -60,63 +62,63 @@ A large Three.js bundle warning from Vite is informational. Production assets st
 ## A first alignment exercise
 
 1. Choose **Real Lab → Two-iris beam walk**. All applied controls start at zero, while the setup contains seeded unknown mirror errors.
-2. Select **Iris 1 · arm A** in the profiler and capture that plane. Capture **Iris 2 · arm A** as well. Beam B is intentionally excluded from these arm-A instrument stations.
+2. Select the **I1 · input beam** plane in the profiler and capture it. Capture **I2 · input beam** as well.
 3. Select A1 or A2 and move pitch/yaw by one step. Each mirror rotates around its surface-center pivot. Read the centroids at both stations.
 4. Use **Hint only** to calibrate a finite-difference response from the accessible measurements. **Apply next adjustment** makes one permitted move. **Auto demonstration** visibly moves the same controls and stops when no improving step is available.
 5. Try **Find a common axis**. Capture two separated trap planes, such as −1 and +1 mm. The measured two-plane slopes distinguish displacement from angular mismatch.
 6. Try **Overlap the waists**. Capture at least three axial planes, including the trap. The instruments fit `w²(z)` to estimate each waist. Move lens **local axial Z**; lens X/Y and pitch/yaw are unavailable in Real Lab.
 7. Try **The crossing-beam trap**. The spots meet at one plane, but a second plane reveals their angular mismatch.
 
-The 11-position controls are intentionally discrete. Some continuous unknown errors cannot be perfectly cancelled on this coarse lattice. A stopped demonstration means that the current one-step search has reached a measurement or adjustment limit; it does not certify perfect alignment. The assistant explicitly reports insufficient independent measurements and nonunique possible causes.
+In Experiment mode, pitch, yaw, and roll allow exact values from −1000 to +1000 mount steps; the ruler offers 0.1-step fine and 10-step coarse arrow moves. Real Lab challenges still use bounded, discrete hidden errors and a measurement-based assistant. A stopped demonstration means that the current one-step search has reached a measurement or adjustment limit; it does not certify perfect alignment. The assistant explicitly reports insufficient independent measurements and nonunique possible causes.
 
 Switching to Experiment or Wave optics reveals model truth. The Reveal solution button also ends the hidden-state exercise. The hidden state is not an adversarial security boundary: it remains inspectable in exported configurations and browser developer tools.
 
 ## Interface
 
-- **Component list / 3D selection:** every mirror, lens, PBS, window, wave plate, source, iris, camera and output detector is selectable. The control panel shows controls for that component. All angular adjustment sliders use −5…+5 relative steps.
+- **Component list / 3D selection:** every mirror, lens, PBS, window, wave plate, source, iris, camera and output detector is selectable. The control panel shows fine/coarse angular controls, a draggable ruler and exact numeric entry.
 - **Experiment:** ideal reset, individual reset, multiple simultaneous adjustments, baseline capture and before/after paths. Save/restore uses device-local storage; JSON export/import preserves settings, nominal geometry, hidden imperfections and user corrections separately.
 - **Views:** mechanical, ray, Gaussian envelope and combined; perspective, top and trap camera presets; orbit, zoom and pan. Components are enlarged for legibility; envelopes have a disclosed 0.14 mm visibility floor. Instrument readings use physical, unexaggerated dimensions.
 - **Profiler:** individual or combined intensities, centroid, 1/e² radius, power and orthogonal cross sections. Choose before/after each mirror or lens, trap positions, model waist positions (Experiment only), pre-recombination and near/far output planes. Add custom planes along the trap axis. Far output planes extrapolate the returned beam beyond the drawn detector.
 - **Measured diagnostics:** two captured parallel planes estimate centroid slopes. Three distinct parallel stations fit a Gaussian width parabola for waist coordinate and radius. These estimates use readings, not hidden true axes or waist coordinates.
 - **Virtual irises:** movable, non-intercepting alignment instruments by default. Their aperture display reports centroid clearance, not a claim that the entire Gaussian passes. Add an iris to a route to make it an intercepting aperture in the geometric clipping approximation.
-- **Camera:** a point particle at the trap supplies the scattering signal. Camera position and pointing determine its perspective projection; zoom, exposure, roll, image offset and optional sensor noise affect display. With no particle, the vacuum remains dark. The fixed gain preserves signal loss on misalignment. This is an illustrative PSF camera, not a calibrated scattering or microscope model.
+- **Camera:** a test particle is on by default at the trap and supplies the scattering signal. Camera position and pointing determine its perspective projection; zoom, exposure, roll, image offset and optional sensor noise affect display. With no particle, the vacuum shows no scattering spot. The display gain is calibrated against the published default bench and preserves signal loss on misalignment. This is an illustrative PSF camera, not a calibrated scattering or microscope model.
 - **Response matrix:** finite-difference effects of the selected adjustment on the next component, the focusing lens, the waist, direction and recombination. Pitch displays vertical response; yaw displays the other transverse response.
 - **Advanced settings:** wavelength, input radius, M², focal length, step scales, glass index, cube size, power and iris radius. These calibrations are locked during an unrevealed Real Lab challenge.
-- **Topology editor:** edit world component positions, exact surface/optical-axis normals, coarse ±90° rotations about world X/Y/Z, and component traversal independently for both arms. Coarse installation orientation is stored separately from fine pitch/yaw mount steps. Physically invalid routes are diagnosed.
+- **Topology editor:** edit world component positions, exact surface/optical-axis normals, ±90° rotations about world X/Y/Z and 45° directions between world axes, and component traversal independently for both arms. Coarse installation orientation is stored separately from fine pitch/yaw mount steps. Physically invalid routes are diagnosed.
 - **Onboarding:** the help button opens a four-step walkthrough.
 
 ## One PBS: the actual path assumption
 
-World coordinates are in **millimeters**, with **Y vertical**, **X the trap axis** and **Z the other table coordinate**. Lens control “Z” is the lens's _local optical axis_, not necessarily world Z. A propagates toward −X through the trap; B propagates toward +X.
+World coordinates are in **millimeters**, with **Y vertical**, **Z the trap axis** and **X the other table coordinate** in the supplied default. Lens control “Z” is the lens's _local optical axis_, not necessarily world Z. A propagates toward +Z through the trap; B propagates toward −Z.
 
-The input travels +Z into one cube at `(0, 0, −180)`. A half-wave plate at `(0, 0, −250)` sets the input linear polarization. The lossless ideal PBS creates:
+The input travels +Z along X=300, turns at A1 toward the half-wave plate, then reaches one cube at `(150, 0, 225)`. The lossless ideal PBS creates:
 
 ```text
-Laser → HWP → SINGLE PBS
+Laser → I1 → I2 → A1 → HWP → SINGLE PBS
 
-A, s: PBS reflection → A1 → A2 → LA → right window
+A, s: PBS reflection → B1 → B2 → LB → left window
+      → TRAP → right window → LA → A2
+      → SAME PBS reflection → common output
+
+B, p: PBS transmission → A2 → LA → right window
       → TRAP → left window → LB → B2 → B1
-      → SAME PBS reflection → common −X output
-
-B, p: PBS transmission → B1 → B2 → LB → left window
-      → TRAP → right window → LA → A2 → A1
-      → SAME PBS transmission → common −X output
+      → SAME PBS transmission → common output
 ```
 
 No second PBS and no hidden polarization-swapping wave plate are present. Polarization preservation sends both returning paths to the fourth port, rather than back toward the input laser.
 
-| Component       | Nominal center, mm                                  |
-| --------------- | --------------------------------------------------- |
-| A1              | `(240, 0, −180)`                                    |
-| A2              | `(240, 0, 0)`                                       |
-| B1              | `(0, 0, 180)`                                       |
-| B2              | `(−240, 0, 0)`                                      |
-| LA / LB         | approximately `(+15.310, 0, 0)` / `(−15.310, 0, 0)` |
-| Windows         | `(+5, 0, 0)` / `(−5, 0, 0)`                         |
-| Trap            | `(0, 0, 0)`                                         |
-| Output profiler | `(−100, 0, −180)`                                   |
+| Component       | Nominal center, mm           |
+| --------------- | ---------------------------- |
+| A1              | `(300, 0, 225)`              |
+| A2              | `(0, 0, 225)`                |
+| B1              | `(150, 0, −150)`             |
+| B2              | `(0, 0, −150)`               |
+| LA / LB         | `(0, 0, 15)` / `(0, 0, −15)` |
+| Windows         | `(0, 0, 5)` / `(0, 0, −5)`   |
+| Trap            | `(0, 0, 0)`                  |
+| Output profiler | `(150, 0, 300)`              |
 
-The lens spacing compensates for a 1 mm, index-1.45 window in each focusing path and the small finite Gaussian input curvature. The routes and geometry are not constrained to this table.
+The routes and geometry are editable and not constrained to this table.
 
 ## Physics models and interpretation
 

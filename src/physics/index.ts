@@ -248,7 +248,7 @@ export function applyAdjustment(
       ...config.adjustments,
       [id]: {
         ...config.adjustments[id],
-        [axis]: Math.max(-5, Math.min(5, Math.round(value))),
+        [axis]: Math.max(-1000, Math.min(1000, Math.round(value * 100) / 100)),
       },
     },
   };
@@ -418,9 +418,9 @@ export function cubePass(
     diagonal = normalize(cross(vertical, nominal)),
     axisX = normalize(sub(diagonal, nominal)),
     axisZ = normalize(add(diagonal, nominal));
-  const axes = (
-    [axisX, vertical, axisZ] as Vec3[]
-  ).map((v) => mountRotate(v, nominal, pitch, yaw, roll));
+  const axes = ([axisX, vertical, axisZ] as Vec3[]).map((v) =>
+    mountRotate(v, nominal, pitch, yaw, roll),
+  );
   const coating = mountRotate(nominal, nominal, pitch, yaw, roll);
   let entryAxis = axes[0];
   for (const a of axes)
@@ -674,7 +674,7 @@ function traceBeam(
     focus?.from || ray.p,
     centralDirection,
     [0, 0, 0],
-    [1, 0, 0],
+    normalize(sub(get("la").position, get("lb").position)),
   );
   const trapPoint = trapHit?.point || waist;
   if (!ray.blocked) passPBS(ray, get("pbs"), config, beam, 2);
@@ -755,11 +755,6 @@ export function makePlane(
   const f = frame(normal);
   return { id, name, point, normal: f.n, u: f.u, v: f.v, segmentHint, beam };
 }
-function nominalSegmentDirection(s: Segment): Vec3 {
-  const from = COMPONENTS.find((c) => c.id === s.fromId.split(":")[0]),
-    to = COMPONENTS.find((c) => c.id === s.toId.split(":")[0]);
-  return from && to ? normalize(sub(to.position, from.position)) : s.direction;
-}
 function isTrap(s: Segment) {
   return (
     (s.fromId.startsWith("wa:exit") && s.toId.startsWith("wb:entry")) ||
@@ -767,32 +762,36 @@ function isTrap(s: Segment) {
   );
 }
 export function getPlanes(sim: Simulation): Plane[] {
+  const trapAxis = normalize(sub(sim.beams.A.direction, sim.beams.B.direction));
+  const inputIris = (id: "iris1" | "iris2", fromId: string) => {
+    const iris = sim.components.find((c) => c.id === id)!;
+    const segment = sim.beams.A.segments.find(
+      (s) => s.fromId === fromId && s.toId === id,
+    );
+    const armSegment = sim.beams.A.segments.find(
+      (s) => s.fromId === "a2" && s.toId === "la",
+    );
+    return makePlane(
+      id,
+      segment ? `${iris.short} · input beam` : `${iris.short} · arm A`,
+      iris.position,
+      segment?.direction || armSegment?.direction || iris.normal,
+      segment ? `${fromId}>${id}` : "a2>la",
+      segment ? undefined : "A",
+    );
+  };
   const planes: Plane[] = [
-    makePlane("trap", "Trap center", [0, 0, 0], [1, 0, 0], "trap"),
-    makePlane(
-      "iris1",
-      "Iris 1 · arm A",
-      sim.components.find((c) => c.id === "iris1")!.position,
-      [-1, 0, 0],
-      "a2>la",
-      "A",
-    ),
-    makePlane(
-      "iris2",
-      "Iris 2 · arm A",
-      sim.components.find((c) => c.id === "iris2")!.position,
-      [-1, 0, 0],
-      "a2>la",
-      "A",
-    ),
+    makePlane("trap", "Trap center", [0, 0, 0], trapAxis, "trap"),
+    inputIris("iris1", "laser"),
+    inputIris("iris2", "iris1"),
   ];
   for (const x of [-2, -1, -0.5, 0.5, 1, 2])
     planes.push(
       makePlane(
         `trap:${x}`,
         `Trap ${x > 0 ? "+" : ""}${x} mm`,
-        [x, 0, 0],
-        [1, 0, 0],
+        scale(trapAxis, x),
+        trapAxis,
         "trap",
       ),
     );
@@ -816,11 +815,8 @@ export function getPlanes(sim: Simulation): Plane[] {
           makePlane(
             `${beam}:before:${id}`,
             `${beam} · before ${component.short}`,
-            sub(
-              component.position,
-              scale(nominalSegmentDirection(before), 0.1),
-            ),
-            nominalSegmentDirection(before),
+            sub(component.position, scale(before.direction, 0.1)),
+            before.direction,
             `${before.fromId}>${before.toId}`,
             beam,
           ),
@@ -830,8 +826,8 @@ export function getPlanes(sim: Simulation): Plane[] {
           makePlane(
             `${beam}:after:${id}`,
             `${beam} · after ${component.short}`,
-            add(component.position, scale(nominalSegmentDirection(after), 0.1)),
-            nominalSegmentDirection(after),
+            add(component.position, scale(after.direction, 0.1)),
+            after.direction,
             `${after.fromId}>${after.toId}`,
             beam,
           ),
@@ -845,39 +841,52 @@ export function getPlanes(sim: Simulation): Plane[] {
           `${beam} · before recombination`,
           sub(
             sim.components.find((c) => c.id === "pbs")!.position,
-            scale(nominalSegmentDirection(beforeReturn), 11),
+            scale(beforeReturn.direction, 11),
           ),
-          nominalSegmentDirection(beforeReturn),
+          beforeReturn.direction,
           `${beforeReturn.fromId}>${beforeReturn.toId}`,
           beam,
         ),
       );
   }
   const detector = sim.components.find((c) => c.id === "detector")!;
+  const returnSegment = sim.beams.A.segments.find(
+    (s) => s.fromId === "pbs:2:exit" && s.toId === "detector",
+  );
+  const outputDirection = returnSegment?.direction || detector.normal;
+  const outputOrigin = returnSegment?.from || detector.position;
   planes.push(
     makePlane(
       "output",
       "After PBS · output profiler",
       detector.position,
-      detector.normal,
+      outputDirection,
       "return",
     ),
     makePlane(
       "near",
       "Output near field",
-      [-45, 0, -180],
-      [-1, 0, 0],
+      add(outputOrigin, scale(outputDirection, 45)),
+      outputDirection,
       "return",
     ),
-    makePlane("far", "Output far field", [-450, 0, -180], [-1, 0, 0], "return"),
+    makePlane(
+      "far",
+      "Output far field",
+      add(outputOrigin, scale(outputDirection, 450)),
+      outputDirection,
+      "return",
+    ),
   );
   return planes;
 }
 export function measure(sim: Simulation, plane: Plane): Measurement {
   const spots = {} as Measurement["spots"];
   for (const beam of ["A", "B"] as BeamId[]) {
+    const useHint = !plane.beam || plane.beam === beam;
     const candidates = sim.beams[beam].segments.filter(
       (s) =>
+        !useHint ||
         !plane.segmentHint ||
         (plane.segmentHint === "trap"
           ? isTrap(s)
@@ -887,18 +896,18 @@ export function measure(sim: Simulation, plane: Plane): Measurement {
     );
     let found:
       { s: Segment; hit: NonNullable<ReturnType<typeof planeHit>> } | undefined;
-    if (!plane.beam || plane.beam === beam)
-      for (const s of candidates) {
-        const h = planeHit(s.from, s.direction, plane.point, plane.normal);
-        if (
-          h &&
-          (h.distance <= s.length + 1e-6 ||
-            (s.fromId === "pbs:2:exit" && s.toId === "detector"))
-        ) {
-          found = { s, hit: h };
-          break;
-        }
-      }
+    for (const s of candidates) {
+      const h = planeHit(s.from, s.direction, plane.point, plane.normal);
+      if (
+        h &&
+        (h.distance <= s.length + 1e-6 ||
+          (s.fromId === "pbs:2:exit" && s.toId === "detector")) &&
+        (!found ||
+          norm(sub(h.point, plane.point)) <
+            norm(sub(found.hit.point, plane.point)))
+      )
+        found = { s, hit: h };
+    }
     if (found) {
       const offset = sub(found.hit.point, plane.point);
       spots[beam] = {
@@ -943,6 +952,62 @@ export function measure(sim: Simulation, plane: Plane): Measurement {
   };
 }
 
+/** Search the available steering mounts for common position and direction at a selected plane. */
+export function alignAtPlane(
+  config: Configuration,
+  target: Plane,
+): { configuration: Configuration; before: number; after: number } {
+  const controls: { id: ComponentId; axis: keyof Adjustment }[] = [];
+  for (const id of ["a2", "b2", "b1"] as ComponentId[])
+    for (const axis of ["pitch", "yaw"] as const) controls.push({ id, axis });
+  const evaluate = (candidate: Configuration) => {
+    const sim = simulate(candidate);
+    if (sim.beams.A.blocked || sim.beams.B.blocked) return Infinity;
+    const currentPlane =
+      getPlanes(sim).find((p) => p.id === target.id) || target;
+    const m = measure(sim, currentPlane);
+    if (!m.spots.A.valid || !m.spots.B.valid) return Infinity;
+    const a = m.spots.A,
+      b = m.spots.B,
+      directionError = Math.min(
+        norm(add(a.direction, b.direction)),
+        norm(sub(a.direction, b.direction)),
+      );
+    return (1 - m.overlap) * 100 + directionError ** 2 * 1000;
+  };
+  let current = config,
+    best = evaluate(config);
+  const before = best;
+  if (!Number.isFinite(best))
+    return { configuration: config, before, after: best };
+  for (const step of [20, 5, 1, 0.2, 0.05, 0.01]) {
+    for (let pass = 0; pass < 3; pass++) {
+      let improved = false;
+      for (const control of controls) {
+        for (const direction of [-1, 1]) {
+          const value =
+            current.adjustments[control.id][control.axis] + direction * step;
+          if (Math.abs(value) > 1000) continue;
+          const candidate = applyAdjustment(
+            current,
+            control.id,
+            control.axis,
+            value,
+          );
+          const score = evaluate(candidate);
+          if (score + 1e-9 < best) {
+            current = candidate;
+            best = score;
+            improved = true;
+          }
+        }
+      }
+      if (!improved) break;
+    }
+  }
+  return { configuration: current, before, after: best };
+}
+
 function rng(seed: number) {
   let x = seed >>> 0;
   return () => {
@@ -964,6 +1029,7 @@ export function randomizeConfiguration(
       settings: { ...config.settings },
       geometry: { ...config.geometry },
       orientations: { ...config.orientations },
+      inputRoute: config.inputRoute,
       routes: config.routes,
       seed,
     };
@@ -1066,7 +1132,7 @@ export function suggestAdjustment(
     const current = config.adjustments[control.id][control.axis],
       responses: { step: number; residual: number[] }[] = [];
     for (const step of [-1, 1])
-      if (current + step >= -5 && current + step <= 5) {
+      if (current + step >= -1000 && current + step <= 1000) {
         const changed = applyAdjustment(
             config,
             control.id,

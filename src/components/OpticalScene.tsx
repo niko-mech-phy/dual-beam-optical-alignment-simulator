@@ -78,30 +78,26 @@ function Breadboard() {
       <mesh position={[0, -32, -30]} receiveShadow>
         <boxGeometry args={[680, 12, 620]} />
         <meshStandardMaterial
-          color="#172326"
-          metalness={0.75}
-          roughness={0.52}
+          color="#dce6eb"
+          metalness={0.35}
+          roughness={0.7}
         />
       </mesh>
       <mesh position={[0, -39.5, -30]}>
         <boxGeometry args={[675, 3, 615]} />
-        <meshStandardMaterial
-          color="#0a1113"
-          metalness={0.85}
-          roughness={0.35}
-        />
+        <meshStandardMaterial color="#bbcbd2" metalness={0.4} roughness={0.6} />
       </mesh>
       <instancedMesh
         ref={holes}
         args={[holeGeometry, undefined, positions.length]}
       >
-        <meshBasicMaterial color="#070d10" />
+        <meshBasicMaterial color="#8ca6b1" />
       </instancedMesh>
       <instancedMesh
         ref={rim}
         args={[ringGeometry, undefined, positions.length]}
       >
-        <meshStandardMaterial color="#344247" metalness={0.7} roughness={0.6} />
+        <meshStandardMaterial color="#b9ccd4" metalness={0.4} roughness={0.7} />
       </instancedMesh>
       {[-325, 325].map((x) =>
         [-325, 265].map((z) => (
@@ -596,10 +592,10 @@ function ComponentModel({
               whiteSpace: "nowrap",
               padding: selected ? "5px 9px" : "4px 7px",
               background: selected
-                ? "rgba(31,54,69,.95)"
-                : "rgba(10,22,28,.83)",
-              color: selected ? "#e3f0fc" : "#a7bdc6",
-              border: `1px solid ${selected ? "#7db9e0" : "rgba(128,159,170,.18)"}`,
+                ? "rgba(220,239,248,.98)"
+                : "rgba(255,255,255,.94)",
+              color: selected ? "#174469" : "#24404b",
+              border: `1px solid ${selected ? "#497db2" : "#b3cbd2"}`,
               borderRadius: 5,
               font: "500 10px/1.2 Inter, system-ui, sans-serif",
               cursor: "pointer",
@@ -753,21 +749,23 @@ function BeamSegment({
 function Trap({
   particle,
   showLabels,
+  axis,
 }: {
   particle: boolean;
   showLabels: boolean;
+  axis: Vec3;
 }) {
   return (
     <group>
       <mesh position={[0, -22, 0]} receiveShadow>
         <boxGeometry args={[47, 5, 48]} />
         <meshStandardMaterial
-          color="#41565e"
+          color="#77939f"
           metalness={0.85}
           roughness={0.25}
         />
       </mesh>
-      <mesh rotation={[0, 0, Math.PI / 2]}>
+      <mesh quaternion={alongQuaternion(axis)}>
         <cylinderGeometry args={[9, 9, 10, 32, 1, true]} />
         <meshPhysicalMaterial
           color="#72b9c5"
@@ -819,11 +817,11 @@ function Trap({
         >
           <span
             style={{
-              color: "#d5e5e9",
+              color: "#244652",
               font: "500 9px Inter, system-ui, sans-serif",
               letterSpacing: "1.3px",
               whiteSpace: "nowrap",
-              textShadow: "0 2px 8px #000",
+              textShadow: "0 1px 3px #fff",
             }}
           >
             TRAPPING REGION
@@ -921,8 +919,8 @@ function World(props: OpticalSceneProps) {
   const ray = view === "combined" || view === "rays";
   return (
     <>
-      <color attach="background" args={["#0a141b"]} />
-      <fog attach="fog" args={["#0a141b", 1000, 1900]} />
+      <color attach="background" args={["#f7fafc"]} />
+      <fog attach="fog" args={["#f7fafc", 1000, 1900]} />
       <ambientLight intensity={0.85} />
       <hemisphereLight args={["#bfdfed", "#263239", 1.5]} />
       <directionalLight
@@ -952,7 +950,11 @@ function World(props: OpticalSceneProps) {
         color="#ffc7a8"
       />
       <Breadboard />
-      <Trap particle={particle} showLabels={showLabels} />
+      <Trap
+        particle={particle}
+        showLabels={showLabels}
+        axis={simulation.beams.A.direction}
+      />
       {simulation.components.map((component) => (
         <ComponentModel
           key={component.id}
